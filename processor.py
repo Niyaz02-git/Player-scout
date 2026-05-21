@@ -7,17 +7,15 @@ import pickle
 
 
 # ── Clustering configuration ───────────────────────────────────────────────────
-
 CLUSTERING_FEATURES = [
-    "goals_per90",                 
-    "assists_per90",                
-    "xg_per90",                     
-    "xag_per90",                    
-    "progressive_carries_per90",   
-    "progressive_passes_per90",    
-    "yellow_card_rate",             
+    "goals_per90",
+    "assists_per90",
+    "yellow_card_rate",
+    "key_passes",
+    "shot_accuracy",
+    "pass_accuracy",
+    "dribbles_success",
 ]
-
 CLUSTER_NAMES = {
     0: "Prolific Striker",
     1: "Creative Playmaker",

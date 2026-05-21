@@ -14,30 +14,25 @@ os.makedirs("assets", exist_ok=True)
 # ── Build dataset ──────────────────────────────────────────────────────────────
 
 def build_dataset():
-    print("Step 1: Scraping FBref...")
-    fbref_df = scrape_all_leagues(save_path="data/fbref_all.csv")
-
-    print("\nStep 2: Fetching API-Football top players...")
+    print("Step 1: Fetching API-Football top players...")
     api_rows = []
     for league_name, league_id in LEAGUES.items():
         if league_name == "Champions League":
             continue
         print(f"  {league_name}")
-        api_rows += get_top_scorers(league_id=league_id,  season=2024)
+        api_rows += get_top_scorers(league_id=league_id, season=2024)
         api_rows += get_top_assists(league_id=league_id, season=2024)
 
     api_df = build_api_dataframe(api_rows).drop_duplicates(subset=["player_id"])
     print(f"  {len(api_df)} unique players from API")
 
-    print("\nStep 3: Merging + engineering features...")
-    merged_df = merge_fbref(api_df, fbref_df)
-    merged_df = engineer_features(merged_df)
-    merged_df = merged_df[merged_df["minutes"] >= 300]
-    merged_df = merged_df.dropna(subset=["goals_per90"])
-    print(f"  Final dataset: {len(merged_df)} players")
+    print("\nStep 2: Engineering features...")
+    api_df = engineer_features(api_df)
+    api_df = api_df[api_df["minutes"] >= 300]
+    api_df = api_df.dropna(subset=["goals_per90"])
+    print(f"  Final dataset: {len(api_df)} players")
 
-    return merged_df
-
+    return api_df
 
 # ── Train model ────────────────────────────────────────────────────────────────
 

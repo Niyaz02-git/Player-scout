@@ -4,7 +4,6 @@ import dash
 from dash import dcc, html, Input, Output
 import dash_bootstrap_components as dbc
 
-from api_client    import search_players
 from processor     import build_api_dataframe, engineer_features, merge_fbref
 from cluster       import predict_cluster, find_similar_players
 from charts        import (radar_chart, cluster_scatter,
@@ -25,11 +24,6 @@ except FileNotFoundError:
     ALL_PLAYERS = pd.DataFrame()
     print("[Warning] Run setup.py first.")
 
-try:
-    FBREF_DF = pd.read_csv("data/fbref_all.csv")
-except FileNotFoundError:
-    FBREF_DF = pd.DataFrame()
-
 
 # ── Layout ─────────────────────────────────────────────────────────────────────
 
@@ -38,7 +32,7 @@ SEARCH_BAR = dbc.Row([
         dcc.Input(
             id="search-input",
             type="text",
-            placeholder="Search any player...  e.g. Salah, Mbappé, Pedri",
+            placeholder="Search any player...  e.g. Salah, Kane, Mbappe",
             debounce=True,
             style={"width": "100%", "fontSize": "16px", "padding": "12px 16px",
                    "borderRadius": "8px", "border": "1px solid #333",
@@ -86,8 +80,8 @@ TABS = dcc.Tabs(id="main-tabs", value="tab-search", children=[
                 dbc.Col(dcc.Dropdown(
                     id="cluster-filter",
                     options=[{"label": n, "value": n} for n in [
-                        "All", "Prolific Striker", "Creative Playmaker",
-                        "Box-to-Box", "Wide Attacker", "Defensive Anchor",
+                        "All", "Defensive Midfielder", "Complete Attacker",
+                        "Pure Striker", "Deep Playmaker",
                     ]],
                     value="All", clearable=False,
                 ), width=4),
@@ -96,7 +90,7 @@ TABS = dcc.Tabs(id="main-tabs", value="tab-search", children=[
                     options=[
                         {"label": "Goals per 90",   "value": "goals_per90"},
                         {"label": "Assists per 90", "value": "assists_per90"},
-                        {"label": "xG per 90",      "value": "xg_per90"},
+                        {"label": "Shot Accuracy",  "value": "shot_accuracy"},
                         {"label": "Rating",         "value": "rating"},
                     ],
                     value="goals_per90", clearable=False,
@@ -115,7 +109,7 @@ app.layout = html.Div([
         html.H1("Player Scout",
                 style={"fontSize": "22px", "fontWeight": "500",
                        "margin": "0", "color": "white"}),
-        html.Span("Powered by API-Football + FBref + KMeans",
+        html.Span("Powered by API-Football + KMeans",
                   style={"fontSize": "12px", "color": "#666", "marginLeft": "12px"}),
     ], style={"padding": "16px 24px", "borderBottom": "1px solid #222",
               "display": "flex", "alignItems": "center"}),
@@ -124,46 +118,7 @@ app.layout = html.Div([
 ], style={"minHeight": "100vh", "background": "#0d0d1a", "fontFamily": "sans-serif"})
 
 
-# ── Callbacks ──────────────────────────────────────────────────────────────────
-
-@app.callback(
-    Output("player-card", "children"),
-    Output("current-player-store", "data"),
-    Input("search-input", "value"),
-    Input("season-dropdown", "value"),
-    prevent_initial_call=True,
-)
-def search_and_display(name, season):
-    if not name or len(name.strip()) < 3:
-        return html.Div("Type at least 3 characters to search.",
-                        style={"color": "#666", "textAlign": "center", "padding": "40px"}), {}
-
-    results = search_players(name.strip(), season=season)
-
-    if not results:
-        return html.Div(f'No players found for "{name}".',
-                        style={"color": "#E85D24", "textAlign": "center", "padding": "40px"}), {}
-
-    api_df = build_api_dataframe(results[:1])
-
-    if not FBREF_DF.empty:
-        api_df = merge_fbref(api_df, FBREF_DF)
-
-    api_df      = engineer_features(api_df)
-    player      = api_df.iloc[0]
-    player_dict = player.to_dict()
-
-    try:
-        cluster_id, cluster_name = predict_cluster(player_dict)
-        similar_df = find_similar_players(player_dict, n=5)
-    except Exception as e:
-        print(f"[Cluster error] {e}")
-        cluster_name = "Unknown"
-        similar_df   = pd.DataFrame()
-
-    card = build_profile_card(results[0]["player"], player, cluster_name, similar_df)
-    return card, player_dict
-
+# ── Helper: build player card ──────────────────────────────────────────────────
 
 def build_profile_card(api_player, player, cluster_name, similar_df):
     photo_url  = api_player.get("photo", "")
@@ -175,25 +130,31 @@ def build_profile_card(api_player, player, cluster_name, similar_df):
         ("Rating",       f"{player.get('rating', 0):.1f}"),
         ("Goals / 90",   f"{player.get('goals_per90', 0):.2f}"),
         ("Assists / 90", f"{player.get('assists_per90', 0):.2f}"),
-        ("xG / 90",      f"{player.get('xg_per90', 0):.2f}"),
+        ("Shot Acc.",    f"{player.get('shot_accuracy', 0):.2f}"),
     ]
 
     return html.Div([
 
         # ── Header ────────────────────────────────────────────────────────────
         dbc.Row([
-            dbc.Col(html.Img(src=photo_url,
-                             style={"width": "80px", "borderRadius": "50%",
-                                    "border": "2px solid #333"}), width="auto"),
+            dbc.Col(
+                html.Img(src=photo_url,
+                         style={"width": "80px", "borderRadius": "50%",
+                                "border": "2px solid #333"})
+                if photo_url else html.Div(
+                    style={"width": "80px", "height": "80px",
+                           "borderRadius": "50%", "background": "#333"}),
+                width="auto"
+            ),
             dbc.Col([
                 html.H2(api_player.get("name", ""),
                         style={"fontSize": "22px", "fontWeight": "500",
                                "margin": "0", "color": "white"}),
                 html.Div([
-                    html.Span(player.get("team", ""),
+                    html.Span(str(player.get("team", "")),
                               style={"color": "#aaa", "fontSize": "14px"}),
                     html.Span(" · ", style={"color": "#444"}),
-                    html.Span(player.get("position", ""),
+                    html.Span(str(player.get("position", "")),
                               style={"color": "#aaa", "fontSize": "14px"}),
                     html.Span(" · ", style={"color": "#444"}),
                     html.Span(cluster_name,
@@ -242,6 +203,53 @@ def build_profile_card(api_player, player, cluster_name, similar_df):
             ], width=7),
         ]),
     ])
+
+
+# ── Callbacks ──────────────────────────────────────────────────────────────────
+
+@app.callback(
+    Output("player-card", "children"),
+    Output("current-player-store", "data"),
+    Input("search-input", "value"),
+    Input("season-dropdown", "value"),
+    prevent_initial_call=True,
+)
+def search_and_display(name, season):
+    if not name or len(name.strip()) < 3:
+        return html.Div("Type at least 3 characters to search.",
+                        style={"color": "#666", "textAlign": "center", "padding": "40px"}), {}
+
+    if ALL_PLAYERS.empty:
+        return html.Div("Dataset not found. Run setup.py first.",
+                        style={"color": "#E85D24", "textAlign": "center", "padding": "40px"}), {}
+
+    # Search local CSV — no API request needed
+    mask    = ALL_PLAYERS["player"].str.contains(name.strip(), case=False, na=False)
+    results = ALL_PLAYERS[mask]
+
+    if results.empty:
+        return html.Div(f'No players found for "{name}". Try a top scorer or assister.',
+                        style={"color": "#E85D24", "textAlign": "center", "padding": "40px"}), {}
+
+    # Take best match — most minutes played
+    player      = results.sort_values("minutes", ascending=False).iloc[0]
+    player_dict = player.to_dict()
+
+    try:
+        cluster_id, cluster_name = predict_cluster(player_dict)
+        similar_df = find_similar_players(player_dict, n=5)
+    except Exception as e:
+        print(f"[Cluster error] {e}")
+        cluster_name = "Unknown"
+        similar_df   = pd.DataFrame()
+
+    api_player = {
+        "name":  player.get("player", ""),
+        "photo": player.get("photo", ""),
+    }
+
+    card = build_profile_card(api_player, player, cluster_name, similar_df)
+    return card, player_dict
 
 
 @app.callback(
